@@ -1,5 +1,5 @@
 services:
-    sam-ent:
+    orchestrator:
         image: solace-agent-mesh-enterprise:1.0.37
         container_name: xxR4-orchestrator
         platform: linux/amd64
@@ -19,7 +19,7 @@ services:
         - "0.0.0.0:8001:8001"        # expose container port 8001 as port 8001 on host IP 0.0.0.0
         command: ["run", "/app/configs/agents/main_orchestrator.yaml", "/app/configs/gateways/webui.yaml"]
 
-    sam-event-gateway:
+    event-gateway-plugin:
         image: solace-agent-mesh-enterprise:1.0.37
         container_name: xxR4-event-gateway-plugin
         platform: linux/amd64
@@ -37,7 +37,7 @@ services:
         entrypoint: ["/bin/bash"]
         command: ["-c", "pip install git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins@main#subdirectory=sam-event-mesh-gateway && sam run /app/configs/gateways/event-mesh-gateway.yaml"]
 
-    sam-postgres-sql:
+    sql-plugin:
         image: solace-agent-mesh-enterprise:1.0.37
         container_name: xxR4-sql-plugin
         platform: linux/amd64
@@ -55,7 +55,7 @@ services:
         - sam-network
         command: ["run", "/app/configs/agents/sql-plugin.yaml"]
 
-    sam-postgres:
+    postgres:
         deploy:
             resources:
                 limits:
@@ -114,10 +114,7 @@ services:
         - system_scaling_maxconnectioncount=100
 
 networks:
-    sam-network:
-        external: true          # reuse your existing network
+    sam-network:      # reuse your existing network
 volumes:
-    sam-enterprise_mongo_data:
-        external: true
     postgres-data:
     storage-group:
