@@ -1,0 +1,90 @@
+# Plugin Metadata:
+# Name: sam-event-mesh-gateway
+# Version: 0.1.0
+# Description: Solace Agent Mesh Gateway plugin for integrating with Solace PubSub+ event brokers.
+# Author: SolaceLabs <solacelabs@solace.com>
+
+log:
+  stdout_log_level: INFO
+  log_file_level: INFO
+  log_file: event-mesh-gateway.log
+
+# To use the `shared_config.yaml` file, uncomment the following line and remove the `shared_config` section below.
+# !include ../shared_config.yaml
+
+shared_config:
+  - broker_connection: &broker_connection
+      dev_mode: ${SOLACE_DEV_MODE, false}
+      broker_url: ${SOLACE_BROKER_URL, ws://localhost:8080}
+      broker_username: ${SOLACE_BROKER_USERNAME, default}
+      broker_password: ${SOLACE_BROKER_PASSWORD, default}
+      broker_vpn: ${SOLACE_BROKER_VPN, default}
+      temporary_queue: ${USE_TEMPORARY_QUEUES, true}
+
+  - models:
+    general: &general_model
+      # This dictionary structure tells ADK to use the LiteLlm wrapper.
+      # 'model' uses the specific model identifier your endpoint expects.
+      model: ${LLM_SERVICE_GENERAL_MODEL_NAME} # Use env var for model name
+      # 'api_base' tells LiteLLM where to send the request.
+      api_base: ${LLM_SERVICE_ENDPOINT} # Use env var for endpoint URL
+      # 'api_key' provides authentication.
+      api_key: ${LLM_SERVICE_API_KEY} # Use env var for API key
+
+  - services:
+   
+    # Default artifact service configuration
+    artifact_service: &default_artifact_service
+      type: "filesystem"
+      base_path: "/tmp/samv2"
+      artifact_scope: namespace
+
+apps:
+  - name: event-mesh-gateway-app
+    app_module: sam_event_mesh_gateway.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: "${NAMESPACE}" 
+      gateway_id: "event-mesh-gateway" # Unique ID for this gateway instance
+
+      artifact_service: *default_artifact_service
+      authorization_service:
+        type: "none" # Or "default_rbac"
+      default_user_identity: "anonymous_event_mesh_user" # If no identity from event
+      
+      # --- Event Mesh Gateway Specific Parameters ---
+      event_mesh_broker_config: # For the data plane Solace client
+        broker_url: ${SOLACE_BROKER_URL} # Can be same or different from control plane
+        broker_vpn: ${SOLACE_BROKER_VPN}
+        broker_username: ${SOLACE_BROKER_USERNAME}
+        broker_password: ${SOLACE_BROKER_PASSWORD}
+        # Other data plane client settings (e.g., client_name, reconnection_strategy)
+
+      ##############################
+      # 1. UPDATE REQUIRED - START #
+      ##############################
+      
+      event_handlers: # List of handlers for incoming Solace messages
+        - name: "generic_json_event_handler"
+          subscriptions:
+            - topic: "erp/support/ticket/created/>"
+          input_expression: "template:Search for similar tickets to this support ticket and summarize your findings and a possible resolution if available: {{json://input.payload}}"
+          payload_encoding: "utf-8"
+          payload_format: "json"
+          on_success: "response_handler"
+          on_error: "response_handler"
+          user_identity_expression: "static:dev-user" # Optional
+          target_agent_name: "OrchestratorAgent" # Static target agent
+          # target_agent_name_expression: "input.user_properties:target_agent" # Or dynamic
+          forward_context: # Optional: Forward data from input to output handlers
+            correlation_id: "input.payload:ticket_id" # Example: forward a correlation ID
+
+      output_handlers: # Optional: List of handlers for publishing A2A responses
+        - name: "response_handler"
+          max_file_size_for_base64_bytes: 5242880 # 5MB limit for embedded files
+          topic_expression: "template:event_mesh/responses/{{text://user_data.forward_context:correlation_id}}"
+          payload_expression: "task_response:text" # Use the simplified payload's text field
+          payload_encoding: "utf-8"
+          payload_format: "text"

@@ -1,0 +1,123 @@
+services:
+    sam-ent:
+        image: solace-agent-mesh-enterprise:1.0.37
+        container_name: xxR4-orchestrator
+        platform: linux/amd64
+        # entrypoint: /bin/bash
+        stdin_open: true       # same as -it
+        tty: true              # same as -it
+        volumes:
+        - ./configs:/app/configs
+        - ./.env:/app/.env
+        - ./data:/data
+        - ./artifacts:/tmp/samv2
+        - ./enterprise-logs:/app  # Map the entire /app directory to enterprise-logs
+
+        networks:
+        - sam-network
+        ports:
+        - "0.0.0.0:8001:8001"        # expose container port 8001 as port 8001 on host IP 0.0.0.0
+        command: ["run", "/app/configs/agents/main_orchestrator.yaml", "/app/configs/gateways/webui.yaml"]
+
+    sam-event-gateway:
+        image: solace-agent-mesh-enterprise:1.0.37
+        container_name: xxR4-event-gateway-plugin
+        platform: linux/amd64
+        # entrypoint: /bin/bash
+        stdin_open: true       # same as -it
+        tty: true              # same as -it
+        volumes:
+        - ./configs:/app/configs
+        - ./.env:/app/.env
+        - ./data:/data
+        - ./enterprise-logs:/app  # Map the entire /app directory to enterprise-logs
+
+        networks:
+        - sam-network
+        entrypoint: ["/bin/bash"]
+        command: ["-c", "pip install git+https://github.com/SolaceLabs/solace-agent-mesh-core-plugins@main#subdirectory=sam-event-mesh-gateway && sam run /app/configs/gateways/event-mesh-gateway.yaml"]
+
+    sam-postgres-sql:
+        image: solace-agent-mesh-enterprise:1.0.37
+        container_name: xxR4-sql-plugin
+        platform: linux/amd64
+        # entrypoint: /bin/bash
+        stdin_open: true       # same as -it
+        tty: true              # same as -it
+        volumes:
+        - ./configs:/app/configs
+        - ./.env:/app/.env
+        - ./artifacts:/tmp/samv2
+        - ./enterprise-logs:/app  # Map the entire /app directory to enterprise-logs
+        - ./data:/data
+
+        networks:
+        - sam-network
+        command: ["run", "/app/configs/agents/sql-plugin.yaml"]
+
+    sam-postgres:
+        deploy:
+            resources:
+                limits:
+                    memory: 7g
+        image: postgres:15
+        container_name: xxR4-postgres
+        restart: always
+        networks:
+        - sam-network
+        environment:
+            POSTGRES_USER: default
+            POSTGRES_PASSWORD: default
+            POSTGRES_DB: support
+        volumes:
+            - postgres-data:/var/lib/postgresql/data
+        ports:
+            - "5432:5432"
+
+    broker:
+        container_name: xxR4-broker
+        image: solace/solace-pubsub-standard:latest
+        volumes:
+        - "storage-group:/var/lib/solace"
+        shm_size: 1g
+        networks:
+        - sam-network
+        ulimits:
+            core: -1
+            nofile:
+                soft: 2448
+                hard: 1048576
+        deploy:
+            restart_policy:
+                condition: on-failure
+                max_attempts: 1
+        ports:
+        - '8008:8008'
+        - '1443:1443'
+        - '1943:1943'
+        - '1883:1883'
+        - '5671:5671'
+        - '5672:5672'
+        - '8000:8000'
+        - '8443:8443'
+        - '8883:8883'
+        - '8080:8080'
+        - '9000:9000'
+        - '9443:9443'
+        - '55554:55555'
+        - '55003:55003'
+        - '55443:55443'
+        - '2222:2222'
+        environment:
+        - username_admin_globalaccesslevel=admin
+        - username_admin_password=admin
+        - system_scaling_maxconnectioncount=100
+
+networks:
+    sam-network:
+        external: true          # reuse your existing network
+volumes:
+    sam-enterprise_mongo_data:
+        external: true
+    postgres-data:
+    storage-group:

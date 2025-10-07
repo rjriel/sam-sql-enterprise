@@ -1,0 +1,7 @@
+venv/
+.env
+.sam/
+artifacts/
+sam.log
+enterprise-logs/
+webui_gateway.db
